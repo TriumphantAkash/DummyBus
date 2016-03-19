@@ -4,10 +4,12 @@ import android.app.Activity;
 import android.location.Location;
 import android.location.LocationListener;
 import android.os.Bundle;
+import android.os.Looper;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -16,6 +18,12 @@ import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.Socket;
+
 
 public class MainActivity extends Activity implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, com.google.android.gms.location.LocationListener{
 
@@ -23,6 +31,7 @@ public class MainActivity extends Activity implements GoogleApiClient.Connection
     private TextView txtOutput;
     private GoogleApiClient mGoogleApiClient;
     private LocationRequest mLocationRequest;
+    static String writableCoordinates = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,6 +45,9 @@ public class MainActivity extends Activity implements GoogleApiClient.Connection
                 .build();
 
         txtOutput = (TextView)findViewById(R.id.txtOutput);
+
+        ManagerThread managerThread = new ManagerThread();
+        managerThread.start();
 
     }
 
@@ -82,8 +94,11 @@ public class MainActivity extends Activity implements GoogleApiClient.Connection
     @Override
     public void onLocationChanged(Location location)
     {
-        Log.i(LOG_TAG, location.toString());
+        //Log.i(LOG_TAG, location.toString());
         txtOutput.setText(location.toString());
+        //also send this location to BusLocator server
+        writableCoordinates = location.toString();
+
     }
 
     @Override
@@ -106,5 +121,34 @@ public class MainActivity extends Activity implements GoogleApiClient.Connection
         }
 
         return super.onOptionsItemSelected(item);
+    }
+
+    public class ManagerThread extends Thread{
+
+        public void run() {
+           // Looper.prepare();
+            Socket clientSocket = null;
+            try {
+
+                DataOutputStream outToServer;
+                clientSocket = new Socket("192.168.0.20", 6970);
+                outToServer = new DataOutputStream(clientSocket.getOutputStream());
+                outToServer.writeBytes("launchpad");
+
+                while(true) {
+                    Thread.sleep(1000);
+                    if(!writableCoordinates.equals("")) {
+                        Log.i(LOG_TAG, writableCoordinates);
+
+                        String[] strings = writableCoordinates.split(" ");
+                        outToServer.writeBytes(strings[1]+"\n");
+                        writableCoordinates = "";
+                    }
+                }
+            } catch (IOException | InterruptedException e) {
+                e.printStackTrace();
+                Toast.makeText(getApplicationContext(), "server is not up", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 }
